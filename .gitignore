@@ -1,0 +1,6 @@
+.vscode/
+out/
+
+home-assistant_v2.db*
+*.png
+!example.png

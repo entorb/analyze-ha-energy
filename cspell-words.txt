@@ -1,1 +1,15 @@
 # CSpell Custom Dictionary Words
+astype
+drawstyle
+fortlaufender
+maxticks
+mdates
+minticks
+mticker
+raspi
+suptitle
+xaxis
+xlabel
+ylabel
+ylim
+Zählerstand
