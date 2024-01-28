@@ -21,14 +21,6 @@ def read_database() -> pd.DataFrame:
     """
     con = sqlite3.connect("home-assistant_v2.db")
 
-    # # hard coded id above
-    # cur = con.cursor()
-    # sql = "select id, statistic_id from statistics_meta sm where sm.statistic_id = ?"
-    # row = cur.execute(sql, (SENSOR_NAME,))
-    # # for row in cur.execute(sql, (SENSOR_NAME,)):
-    # print(dict(row))
-    # cur.close()
-
     # note: column 'state' is reset from time to time, better use 'sum'
     sql = """
     SELECT start_ts, sum as 'kWh_sum'
@@ -36,7 +28,9 @@ def read_database() -> pd.DataFrame:
     WHERE statistics.metadata_id = ?
     ORDER BY created_ts ASC
     """
-    df = pd.read_sql_query(sql, con, params=(SENSOR_ID,))  # using bind variable
+    df = pd.read_sql_query(
+        sql, con, params=(SENSOR_ID,)
+    )  # using bind variable of hard coded value
     con.close()
     return df
 
@@ -148,28 +142,12 @@ def prepare_df_month(df_day: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# # print(df.head(24))
-# def plot_hour(df: pd.DataFrame) -> None:
-#     """Plot kWh per hour over all time."""
-#     fig, ax = plt.subplots()
-#     df["kWh"].plot(legend=False, drawstyle="steps-post")
-#     plt.suptitle("kWh per hour")
-#     plt.xlabel("")
-#     ax.set_ylim(
-#         0,
-#     )
-#     plt.grid(axis="both")
-#     plt.tight_layout()
-
-#     plt.savefig(fname="kwh-hour.png", format="png")
-#     plt.close()
-
-
 def plot_kWh_date(df: pd.DataFrame, grouper: str) -> None:  # noqa: N802
     """
     Plot kWh per grouper (hour, day, week, month) over all time.
     """
-    print(grouper)
+    file_name = f"kWh-date-{grouper}"
+    print("plot", file_name)
     fig, ax = plt.subplots()
     if grouper in ("hour", "day"):
         df["kWh"].plot(legend=False, drawstyle="steps-post")
@@ -180,14 +158,16 @@ def plot_kWh_date(df: pd.DataFrame, grouper: str) -> None:  # noqa: N802
 
     plt.suptitle(f"kWh per {grouper}")
     plot_format(ax)
-    plt.savefig(fname=f"kWh-date-{grouper}.png", format="png")
+    plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
 
 
-def plot_kWh_mean_date(  # noqa: N802
+def plot_kWh_date_mean(  # noqa: N802
     df_day: pd.DataFrame, df_week: pd.DataFrame, df_month: pd.DataFrame
 ) -> None:
     """Plot kWh per day, week and month (averaged) over all time."""
+    file_name = "kWh-date-joined"
+    print("plot", file_name)
     fig, ax = plt.subplots()
     df_day["kWh"].plot(legend=True, drawstyle="steps-post")
     df_week["kWh_mean"].plot(drawstyle="steps-post")
@@ -195,7 +175,7 @@ def plot_kWh_mean_date(  # noqa: N802
     plt.legend(["Day", "Week", "Month"])
     plt.suptitle("kWh per Day, Week and Month (averaged)")
     plot_format(ax)
-    plt.savefig(fname="kWh-date-mean.png", format="png")
+    plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
 
 
@@ -227,7 +207,7 @@ if __name__ == "__main__":
     df_month = prepare_df_month(df_day)
     plot_kWh_date(df_month, "month")
 
-    plot_kWh_mean_date(df_day, df_week, df_month)
+    plot_kWh_date_mean(df_day, df_week, df_month)
 
     Path("out").mkdir(exist_ok=True)
     df_day["kWh"].round(3).to_csv("out/day.csv")
