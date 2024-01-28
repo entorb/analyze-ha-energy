@@ -143,7 +143,11 @@ def prepare_df_month(df_day: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def plot_kWh_date(df: pd.DataFrame, grouper: str) -> None:  # noqa: N802
+def plot_kWh_date(  # noqa: N802
+    df: pd.DataFrame,
+    grouper: str,
+    sum_kWh: int = 0,  # noqa: N803
+) -> None:
     """
     Plot kWh per grouper (hour, day, week, month) over all time.
     """
@@ -158,13 +162,26 @@ def plot_kWh_date(df: pd.DataFrame, grouper: str) -> None:  # noqa: N802
         # ax.step(df["kWh"]["sum"], df["kWh"].index)
         df["kWh_sum"].plot(legend=False, drawstyle="steps-post")
 
+    if sum_kWh > 0:
+        ax.text(
+            0.99,
+            0.99,
+            f"total: {sum_kWh} kWh",
+            horizontalalignment="right",
+            verticalalignment="top",
+            transform=ax.transAxes,
+        )
+
     plot_format(ax)
     plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
 
 
 def plot_kWh_date_mean(  # noqa: N802
-    df_day: pd.DataFrame, df_week: pd.DataFrame, df_month: pd.DataFrame
+    df_day: pd.DataFrame,
+    df_week: pd.DataFrame,
+    df_month: pd.DataFrame,
+    sum_kWh: int = 0,  # noqa: N803
 ) -> None:
     """Plot kWh per day, week and month (averaged) over all time."""
     file_name = "kWh-date-joined"
@@ -175,6 +192,17 @@ def plot_kWh_date_mean(  # noqa: N802
     df_month["kWh_mean"].plot(drawstyle="steps-post")
     plt.legend(["Day", "Week", "Month"])
     plt.suptitle("kWh per Day, Week and Month (averaged)")
+
+    if sum_kWh > 0:
+        ax.text(
+            0.99,
+            0.99,
+            f"total: {sum_kWh} kWh",
+            horizontalalignment="right",
+            verticalalignment="top",
+            transform=ax.transAxes,
+        )
+
     plot_format(ax)
     ax.set_ylim(
         0,
@@ -279,13 +307,14 @@ if __name__ == "__main__":
 
     plot_kWh_date(df_hour, "hour")
     df_day = prepare_df_day(df_hour)
-    plot_kWh_date(df_day, "day")
+    sum_kWh = int(round(df_day["kWh"].sum(), 0))  # noqa: N816
+    plot_kWh_date(df_day, "day", sum_kWh=sum_kWh)
     df_week = prepare_df_week(df_day)
-    plot_kWh_date(df_week, "week")
+    plot_kWh_date(df_week, "week", sum_kWh=sum_kWh)
     df_month = prepare_df_month(df_day)
-    plot_kWh_date(df_month, "month")
+    plot_kWh_date(df_month, "month", sum_kWh=sum_kWh)
 
-    plot_kWh_date_mean(df_day, df_week, df_month)
+    plot_kWh_date_mean(df_day, df_week, df_month, sum_kWh=sum_kWh)
 
     Path("out").mkdir(exist_ok=True)
     df_day["kWh"].round(3).to_csv("out/day.csv")
