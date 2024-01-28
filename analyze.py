@@ -3,14 +3,15 @@ import datetime as dt
 import sqlite3
 from pathlib import Path
 
-# import matplotlib.ticker as mticker
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import pandas as pd
 
 # SENSOR_NAME = "sensor.plug1_pv_energy"
 SENSOR_ID = 9
 # from SELECT * FROM statistics_meta WHERE statistic_id = 'sensor.plug1_pv_energy';
+MAX_KWH_PER_HOUR = 0.63
 
 
 def read_database() -> pd.DataFrame:
@@ -148,6 +149,7 @@ def plot_kWh_date(df: pd.DataFrame, grouper: str) -> None:  # noqa: N802
     """
     file_name = f"kWh-date-{grouper}"
     print("plot", file_name)
+    plt.suptitle(f"kWh per {grouper}")
     fig, ax = plt.subplots()
     if grouper in ("hour", "day"):
         df["kWh"].plot(legend=False, drawstyle="steps-post")
@@ -156,7 +158,6 @@ def plot_kWh_date(df: pd.DataFrame, grouper: str) -> None:  # noqa: N802
         # ax.step(df["kWh"]["sum"], df["kWh"].index)
         df["kWh_sum"].plot(legend=False, drawstyle="steps-post")
 
-    plt.suptitle(f"kWh per {grouper}")
     plot_format(ax)
     plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
@@ -175,6 +176,9 @@ def plot_kWh_date_mean(  # noqa: N802
     plt.legend(["Day", "Week", "Month"])
     plt.suptitle("kWh per Day, Week and Month (averaged)")
     plot_format(ax)
+    ax.set_ylim(
+        0,
+    )
     plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
 
@@ -197,8 +201,82 @@ def plot_format(ax) -> None:  # noqa: ANN001
     plt.tight_layout()
 
 
+def prepare_df_last_7_days(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare a DataFrame of hours of the last 7 days.
+    """
+    # do not modify original
+    df = df.copy()
+    # dropping timezone to make it easier
+    df.index = df.index.tz_localize(None)  # type: ignore
+
+    # df.index = df.index.tz_localize(None)
+    df = df[df.index > (df.index[-1] - pd.DateOffset(days=8)).normalize()]
+    # TODO: starts at 01:00:00+01:00 instead of 0:00
+    df["date"] = pd.to_datetime(df.index.date)  # type: ignore
+    today = pd.Timestamp.now().normalize()
+    df["days_past"] = (today - pd.to_datetime(df["date"])).dt.days  # type: ignore
+    df["time"] = df.index.time  # type: ignore
+    df["hour"] = df.index.hour  # type: ignore
+    # print(df)
+    return df
+
+
+def plot_last_7_days(df_hour2: pd.DataFrame) -> None:
+    """
+    Plot kWh per hour of the last 7 days using subplots of 8 rows.
+    """
+    file_name = "kWh-hours-last-7-days"
+    print("plot", file_name)
+    fig, ax = plt.subplots(nrows=8, sharex=True, sharey=True)
+    fig.subplots_adjust(hspace=0)
+    plt.suptitle("Last 7 days")
+
+    for i in range(8):
+        date_to_plot = df_hour2[df_hour2["days_past"] == i]["date"].iloc[0]
+
+        df = df_hour2[df_hour2["days_past"] == i][["kWh", "hour"]]
+        df = df.set_index("hour")
+        kWh_sum = df["kWh"].sum()  # noqa: N806
+
+        df.plot.bar(legend=False, ax=ax[i], width=1.0)
+
+        ax[i].text(
+            0.99,
+            0.5,
+            f'{date_to_plot.strftime("%d.%m.")} {kWh_sum:.1f}kWh',
+            horizontalalignment="right",
+            verticalalignment="center",
+            transform=ax[i].transAxes,
+        )
+        ax[i].set_xlabel("")
+        ax[i].yaxis.set_major_locator(mticker.NullLocator())
+        ax[i].yaxis.set_minor_locator(mticker.NullLocator())
+    # set same x+y range
+    ax[0].set_xlim(4, 20)
+    ax[0].set_ylim(0, MAX_KWH_PER_HOUR)
+    plt.xticks(rotation=0)
+
+    fig.supylabel("Hour of the Day")
+    fig.supylabel(f"kWh per Hour (max {round(MAX_KWH_PER_HOUR,1)}kWh)")
+    # plt.xlabel("kWh per Hour")
+    # plt.ylabel("kWh per Hour")
+    # plt.tight_layout()
+    plt.subplots_adjust(
+        left=None, bottom=None, right=None, top=None, wspace=None, hspace=None
+    )
+
+    plt.savefig(fname=f"{file_name}.png", format="png")
+    plt.close()
+
+
 if __name__ == "__main__":
     df_hour = prepare_df(read_database())
+
+    # internally a .copy() is called
+    df_hour2 = prepare_df_last_7_days(df_hour)
+    plot_last_7_days(df_hour2)
+
     plot_kWh_date(df_hour, "hour")
     df_day = prepare_df_day(df_hour)
     plot_kWh_date(df_day, "day")
