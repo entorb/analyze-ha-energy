@@ -188,22 +188,24 @@ def plot_kWh_date_mean(  # noqa: N802
     print("plot", file_name)
     fig, ax = plt.subplots()
     df_day["kWh"].plot(legend=True, drawstyle="steps-post")
-    df_week["kWh_mean"].plot(drawstyle="steps-post")
-    df_month["kWh_mean"].plot(drawstyle="steps-post")
+    df_week["kWh_mean"].plot(drawstyle="steps-post", linewidth=2.0)
+    df_month["kWh_mean"].plot(drawstyle="steps-post", linewidth=3.0)
     plt.legend(["Day", "Week", "Month"])
-    plt.suptitle("kWh per Day, Week and Month (averaged)")
+    plt.suptitle("kWh per Day, averaged per Week and Month")
 
     if sum_kWh > 0:
-        ax.text(
-            0.99,
-            0.99,
+        plt.gcf().text(
+            0.96,
+            0.935,
             f"total: {sum_kWh} kWh",
             horizontalalignment="right",
             verticalalignment="top",
-            transform=ax.transAxes,
+            # transform=ax.transAxes,
         )
 
     plot_format(ax)
+    plt.ylabel("Kilowatt hours (kWh) per day")
+
     ax.set_ylim(
         0,
     )
@@ -242,8 +244,9 @@ def prepare_df_last_7_days(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df.index > (df.index[-1] - pd.DateOffset(days=8)).normalize()]
     # TODO: starts at 01:00:00+01:00 instead of 0:00
     df["date"] = pd.to_datetime(df.index.date)  # type: ignore
-    today = pd.Timestamp.now().normalize()
-    df["days_past"] = (today - pd.to_datetime(df["date"])).dt.days  # type: ignore
+    # today = pd.Timestamp.now().normalize()
+    last_day = df["date"].iloc[-1]
+    df["days_past"] = (last_day - pd.to_datetime(df["date"])).dt.days  # type: ignore
     df["time"] = df.index.time  # type: ignore
     df["hour"] = df.index.hour  # type: ignore
     # print(df)
@@ -269,9 +272,9 @@ def plot_last_7_days(df_hour2: pd.DataFrame) -> None:
 
         df.plot.bar(legend=False, ax=ax[i], width=1.0)
 
-        ax[i].text(
+        plt.text(
             0.99,
-            0.5,
+            0.99,
             f'{date_to_plot.strftime("%d.%m.")} {kWh_sum:.1f}kWh',
             horizontalalignment="right",
             verticalalignment="center",
@@ -308,10 +311,16 @@ if __name__ == "__main__":
     plot_kWh_date(df_hour, "hour")
     df_day = prepare_df_day(df_hour)
     sum_kWh = int(round(df_day["kWh"].sum(), 0))  # noqa: N816
-    plot_kWh_date(df_day, "day", sum_kWh=sum_kWh)
     df_week = prepare_df_week(df_day)
-    plot_kWh_date(df_week, "week", sum_kWh=sum_kWh)
     df_month = prepare_df_month(df_day)
+    # add last values
+    today = pd.Timestamp.now().normalize()
+    for df in (df_day, df_week, df_month):
+        last_values = df.iloc[-1]
+        df.loc[today] = last_values  # type: ignore
+
+    plot_kWh_date(df_day, "day", sum_kWh=sum_kWh)
+    plot_kWh_date(df_week, "week", sum_kWh=sum_kWh)
     plot_kWh_date(df_month, "month", sum_kWh=sum_kWh)
 
     plot_kWh_date_mean(df_day, df_week, df_month, sum_kWh=sum_kWh)

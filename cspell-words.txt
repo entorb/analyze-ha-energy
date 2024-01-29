@@ -5,6 +5,7 @@ fortlaufender
 horizontalalignment
 hspace
 iloc
+linewidth
 maxticks
 mdates
 minticks
