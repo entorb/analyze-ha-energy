@@ -1,6 +1,7 @@
 """Analyze Home Assistant Solar Production."""
 import datetime as dt
 import sqlite3
+from math import ceil
 from pathlib import Path
 
 import matplotlib.dates as mdates
@@ -11,7 +12,7 @@ import pandas as pd
 # SENSOR_NAME = "sensor.plug1_pv_energy"
 SENSOR_ID = 9
 # from SELECT * FROM statistics_meta WHERE statistic_id = 'sensor.plug1_pv_energy';
-MAX_KWH_PER_HOUR = 0.63
+# MAX_KWH_PER_HOUR = 0.63
 
 
 def read_database() -> pd.DataFrame:
@@ -143,10 +144,11 @@ def prepare_df_month(df_day: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def plot_kWh_date(  # noqa: N802
+def plot_kWh(  # noqa: N802
     df: pd.DataFrame,
     grouper: str,
-    sum_kWh: int = 0,  # noqa: N803
+    kWh_sum: int = 0,  # noqa: N803
+    kWh_max: float = 0,  # noqa: N803
 ) -> None:
     """
     Plot kWh per grouper (hour, day, week, month) over all time.
@@ -162,17 +164,24 @@ def plot_kWh_date(  # noqa: N802
         # ax.step(df["kWh"]["sum"], df["kWh"].index)
         df["kWh_sum"].plot(legend=False, drawstyle="steps-post")
 
-    if sum_kWh > 0:
+    if kWh_sum > 0:
         ax.text(
             0.99,
             0.99,
-            f"total: {sum_kWh} kWh",
+            f"total: {kWh_sum} kWh",
             horizontalalignment="right",
             verticalalignment="top",
             transform=ax.transAxes,
         )
 
+    if kWh_max > 0:
+        ax.set_ylim(0, kWh_max)
+    else:
+        ax.set_ylim(
+            0,
+        )
     plot_format(ax)
+
     plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
 
@@ -181,7 +190,7 @@ def plot_kWh_date_mean(  # noqa: N802
     df_day: pd.DataFrame,
     df_week: pd.DataFrame,
     df_month: pd.DataFrame,
-    sum_kWh: int = 0,  # noqa: N803
+    kWh_sum: int = 0,  # noqa: N803
 ) -> None:
     """Plot kWh per day, week and month (averaged) over all time."""
     file_name = "kWh-date-joined"
@@ -193,11 +202,11 @@ def plot_kWh_date_mean(  # noqa: N802
     plt.legend(["Day", "Week", "Month"])
     plt.suptitle("kWh per Day, averaged per Week and Month")
 
-    if sum_kWh > 0:
+    if kWh_sum > 0:
         plt.gcf().text(
             0.96,
             0.935,
-            f"total: {sum_kWh} kWh",
+            f"total: {kWh_sum} kWh",
             horizontalalignment="right",
             verticalalignment="top",
             # transform=ax.transAxes,
@@ -206,9 +215,7 @@ def plot_kWh_date_mean(  # noqa: N802
     plot_format(ax)
     plt.ylabel("Kilowatt hours (kWh) per day")
 
-    ax.set_ylim(
-        0,
-    )
+    ax.set_ylim(0, MAX_KWH_PER_DAY)
     plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
 
@@ -217,9 +224,6 @@ def plot_format(ax) -> None:  # noqa: ANN001
     """Format plots."""
     plt.xlabel("")
     plt.ylabel("kWh")
-    ax.set_ylim(
-        0.1,
-    )
     plt.grid(axis="both")
     x_tic_locator = mdates.AutoDateLocator(minticks=3, maxticks=7)
     x_tic_formatter = mdates.ConciseDateFormatter(
@@ -231,9 +235,9 @@ def plot_format(ax) -> None:  # noqa: ANN001
     plt.tight_layout()
 
 
-def prepare_df_last_7_days(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_df_last_14_days(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Prepare a DataFrame of hours of the last 7 days.
+    Prepare a DataFrame of hours of the last 14 days.
     """
     # do not modify original
     df = df.copy()
@@ -241,7 +245,7 @@ def prepare_df_last_7_days(df: pd.DataFrame) -> pd.DataFrame:
     df.index = df.index.tz_localize(None)  # type: ignore
 
     # df.index = df.index.tz_localize(None)
-    df = df[df.index > (df.index[-1] - pd.DateOffset(days=8)).normalize()]
+    df = df[df.index > (df.index[-1] - pd.DateOffset(days=14)).normalize()]
     # TODO: starts at 01:00:00+01:00 instead of 0:00
     df["date"] = pd.to_datetime(df.index.date)  # type: ignore
     # today = pd.Timestamp.now().normalize()
@@ -253,17 +257,18 @@ def prepare_df_last_7_days(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def plot_last_7_days(df_hour2: pd.DataFrame) -> None:
+def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
     """
-    Plot kWh per hour of the last 7 days using subplots of 8 rows.
+    Plot kWh per hour of the last 14 days using subplots.
     """
-    file_name = "kWh-hours-last-7-days"
+    days = 14
+    file_name = f"kWh-hours-last-{days}-days"
     print("plot", file_name)
-    fig, ax = plt.subplots(nrows=8, sharex=True, sharey=True)
+    fig, ax = plt.subplots(nrows=days, sharex=True, sharey=True, figsize=(4.8, 6.4))
     fig.subplots_adjust(hspace=0)
-    plt.suptitle("Last 7 days")
+    plt.suptitle(f"Last {days} days")
 
-    for i in range(8):
+    for i in range(days):
         date_to_plot = df_hour2[df_hour2["days_past"] == i]["date"].iloc[0]
 
         df = df_hour2[df_hour2["days_past"] == i][["kWh", "hour"]]
@@ -274,10 +279,10 @@ def plot_last_7_days(df_hour2: pd.DataFrame) -> None:
 
         plt.text(
             0.99,
-            0.99,
+            0.94,
             f'{date_to_plot.strftime("%d.%m.")} {kWh_sum:.1f}kWh',
             horizontalalignment="right",
-            verticalalignment="center",
+            verticalalignment="top",
             transform=ax[i].transAxes,
         )
         ax[i].set_xlabel("")
@@ -288,7 +293,7 @@ def plot_last_7_days(df_hour2: pd.DataFrame) -> None:
     ax[0].set_ylim(0, MAX_KWH_PER_HOUR)
     plt.xticks(rotation=0)
 
-    fig.supylabel("Hour of the Day")
+    fig.supxlabel("Hour of the Day")
     fig.supylabel(f"kWh per Hour (max {round(MAX_KWH_PER_HOUR,1)}kWh)")
     # plt.xlabel("kWh per Hour")
     # plt.ylabel("kWh per Hour")
@@ -303,14 +308,17 @@ def plot_last_7_days(df_hour2: pd.DataFrame) -> None:
 
 if __name__ == "__main__":
     df_hour = prepare_df(read_database())
+    MAX_KWH_PER_HOUR = df_hour["kWh"].max()
 
     # internally a .copy() is called
-    df_hour2 = prepare_df_last_7_days(df_hour)
-    plot_last_7_days(df_hour2)
+    df_hour_14d = prepare_df_last_14_days(df_hour)
+    plot_last_14_days(df_hour_14d)
 
-    plot_kWh_date(df_hour, "hour")
+    plot_kWh(df_hour, "hour", kWh_max=MAX_KWH_PER_HOUR)
     df_day = prepare_df_day(df_hour)
-    sum_kWh = int(round(df_day["kWh"].sum(), 0))  # noqa: N816
+    kWh_sum = int(round(df_day["kWh"].sum(), 0))  # noqa: N816
+    MAX_KWH_PER_DAY = ceil(df_day["kWh"].max())
+
     df_week = prepare_df_week(df_day)
     df_month = prepare_df_month(df_day)
     # add last values
@@ -319,11 +327,11 @@ if __name__ == "__main__":
         last_values = df.iloc[-1]
         df.loc[today] = last_values  # type: ignore
 
-    plot_kWh_date(df_day, "day", sum_kWh=sum_kWh)
-    plot_kWh_date(df_week, "week", sum_kWh=sum_kWh)
-    plot_kWh_date(df_month, "month", sum_kWh=sum_kWh)
+    plot_kWh(df_day, "day", kWh_sum=kWh_sum, kWh_max=MAX_KWH_PER_DAY)
+    plot_kWh(df_week, "week", kWh_sum=kWh_sum)
+    plot_kWh(df_month, "month", kWh_sum=kWh_sum)
 
-    plot_kWh_date_mean(df_day, df_week, df_month, sum_kWh=sum_kWh)
+    plot_kWh_date_mean(df_day, df_week, df_month, kWh_sum=kWh_sum)
 
     Path("out").mkdir(exist_ok=True)
     df_day["kWh"].round(3).to_csv("out/day.csv")
