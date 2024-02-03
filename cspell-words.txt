@@ -1,6 +1,7 @@
 # CSpell Custom Dictionary Words
 astype
 drawstyle
+figsize
 fortlaufender
 horizontalalignment
 hspace
@@ -15,6 +16,7 @@ raspi
 sharex
 sharey
 suptitle
+supxlabel
 supylabel
 verticalalignment
 wspace
