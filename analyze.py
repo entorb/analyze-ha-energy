@@ -37,9 +37,9 @@ def read_database() -> pd.DataFrame:
     return df
 
 
-def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_df_hours(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Prepare DataFrame.
+    Prepare DataFrame of hour sums in local timezone.
 
     timestamp to datetime
     kWh sum per hour
@@ -64,13 +64,44 @@ def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def prepare_df_hours_goal_reached(
+    df_hour: pd.DataFrame,
+    kWh_target: float = 0.100,  # noqa: N803
+) -> pd.DataFrame:
+    """
+    Analyze how many hours per day did I get more than 100 Wh.
+
+    index: date
+    column: hours that reached the target kWh, rolling average of 7 days
+    """
+    date_last_source = str(df_hour.index[-1].date())  # str to remove timezone
+
+    df = df_hour[df_hour["kWh"] >= kWh_target].copy()
+
+    df["date"] = pd.to_datetime(df.index.date)  # type: ignore
+    df = df.groupby(["date"]).agg(count=("kWh", "count"))
+    date_last = str(df.index[-1].date())
+
+    if date_last != date_last_source:
+        df.loc[pd.to_datetime(date_last_source)] = 0
+
+    df = df.reindex(
+        pd.date_range(df.index.min(), df.index.max(), freq="D"), fill_value=0
+    )
+    df.index.name = "date"
+    df["roll"] = df["count"].rolling(window=7, min_periods=1).mean().round(1)
+    # print(df)
+    return df
+
+
 def prepare_df_day(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Prepare DataFrame of day sums.
+    Prepare DataFrame of day sums from hour-sums.
 
     date-index
     has columns for year, month, week
     """
+    # add column date from DateTime index
     df["date"] = pd.to_datetime(df.index.date)  # type: ignore
     df = df[["kWh", "date"]].groupby(["date"]).sum()
     # add missing dates
@@ -144,6 +175,28 @@ def prepare_df_month(df_day: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def prepare_df_last_14_days(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare a DataFrame of hours of the last 14 days.
+    """
+    # do not modify original
+    df = df.copy()
+    # dropping timezone to make it easier
+    df.index = df.index.tz_localize(None)  # type: ignore
+
+    # df.index = df.index.tz_localize(None)
+    df = df[df.index > (df.index[-1] - pd.DateOffset(days=14)).normalize()]
+    # TODO: starts at 01:00:00+01:00 instead of 0:00
+    df["date"] = pd.to_datetime(df.index.date)  # type: ignore
+    # today = pd.Timestamp.now().normalize()
+    last_day = df["date"].iloc[-1]
+    df["days_past"] = (last_day - pd.to_datetime(df["date"])).dt.days  # type: ignore
+    df["time"] = df.index.time  # type: ignore
+    df["hour"] = df.index.hour  # type: ignore
+    # print(df)
+    return df
+
+
 def plot_kWh(  # noqa: N802
     df: pd.DataFrame,
     grouper: str,
@@ -213,9 +266,9 @@ def plot_kWh_date_mean(  # noqa: N802
         )
 
     plot_format(ax)
+    ax.set_ylim(0, MAX_KWH_PER_DAY)
     plt.ylabel("Kilowatt hours (kWh) per day")
 
-    ax.set_ylim(0, MAX_KWH_PER_DAY)
     plt.savefig(fname=f"{file_name}.png", format="png")
     plt.close()
 
@@ -233,28 +286,6 @@ def plot_format(ax) -> None:  # noqa: ANN001
     )
     ax.xaxis.set_major_formatter(x_tic_formatter)
     plt.tight_layout()
-
-
-def prepare_df_last_14_days(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Prepare a DataFrame of hours of the last 14 days.
-    """
-    # do not modify original
-    df = df.copy()
-    # dropping timezone to make it easier
-    df.index = df.index.tz_localize(None)  # type: ignore
-
-    # df.index = df.index.tz_localize(None)
-    df = df[df.index > (df.index[-1] - pd.DateOffset(days=14)).normalize()]
-    # TODO: starts at 01:00:00+01:00 instead of 0:00
-    df["date"] = pd.to_datetime(df.index.date)  # type: ignore
-    # today = pd.Timestamp.now().normalize()
-    last_day = df["date"].iloc[-1]
-    df["days_past"] = (last_day - pd.to_datetime(df["date"])).dt.days  # type: ignore
-    df["time"] = df.index.time  # type: ignore
-    df["hour"] = df.index.hour  # type: ignore
-    # print(df)
-    return df
 
 
 def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
@@ -306,21 +337,60 @@ def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
     plt.close()
 
 
-if __name__ == "__main__":
-    df_hour = prepare_df(read_database())
-    MAX_KWH_PER_HOUR = df_hour["kWh"].max()
+def plot_hours_goal_reached(df: pd.DataFrame, Wh_target: int) -> None:  # noqa: N803
+    """
+    Plot how many hours per day did I get more than 100Wh.
+    """
+    file_name = f"hours-of-{Wh_target}Wh"
+    print("plot", file_name)
 
-    # internally a .copy() is called
+    fig, ax = plt.subplots()
+    df.plot(
+        legend=False,
+        ax=ax,
+        # drawstyle="steps-post",
+    )
+    ax.set_ylim(
+        0,
+    )
+    plot_format(ax)
+    plt.ylabel("Count of hours of >= 100kWh")
+
+    plt.savefig(fname=f"{file_name}.png", format="png")
+    plt.close()
+
+
+if __name__ == "__main__":
+    df_hour = prepare_df_hours(read_database())
+    MAX_KWH_PER_HOUR = df_hour["kWh"].max()
+    plot_kWh(df_hour, "hour", kWh_max=MAX_KWH_PER_HOUR)
+
+    # how many hours per day did I reach a certain kWh target
+    df_hours_of_50W = prepare_df_hours_goal_reached(  # noqa: N816
+        df_hour, kWh_target=50 / 1000
+    )
+    plot_hours_goal_reached(df_hours_of_50W, Wh_target=50)
+
+    df_hours_of_100W = prepare_df_hours_goal_reached(  # noqa: N816
+        df_hour, kWh_target=100 / 1000
+    )
+    plot_hours_goal_reached(df_hours_of_100W, Wh_target=100)
+
+    df_hours_of_200W = prepare_df_hours_goal_reached(  # noqa: N816
+        df_hour, kWh_target=200 / 1000
+    )
+    plot_hours_goal_reached(df_hours_of_200W, Wh_target=200)
+
     df_hour_14d = prepare_df_last_14_days(df_hour)
     plot_last_14_days(df_hour_14d)
 
-    plot_kWh(df_hour, "hour", kWh_max=MAX_KWH_PER_HOUR)
     df_day = prepare_df_day(df_hour)
     kWh_sum = int(round(df_day["kWh"].sum(), 0))  # noqa: N816
     MAX_KWH_PER_DAY = ceil(df_day["kWh"].max())
 
     df_week = prepare_df_week(df_day)
     df_month = prepare_df_month(df_day)
+
     # add last values
     today = pd.Timestamp.now().normalize()
     for df in (df_day, df_week, df_month):
