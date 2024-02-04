@@ -1,4 +1,5 @@
 """Analyze Home Assistant Solar Production."""
+
 import datetime as dt
 import sqlite3
 from math import ceil
@@ -66,7 +67,7 @@ def prepare_df_hours(df: pd.DataFrame) -> pd.DataFrame:
 
 def prepare_df_hours_goal_reached(
     df_hour: pd.DataFrame,
-    kWh_target: float = 0.100,  # noqa: N803
+    wh_target: int = 100,
 ) -> pd.DataFrame:
     """
     Analyze how many hours per day did I get more than 100 Wh.
@@ -76,14 +77,17 @@ def prepare_df_hours_goal_reached(
     """
     date_last_source = str(df_hour.index[-1].date())  # str to remove timezone
 
-    df = df_hour[df_hour["kWh"] >= kWh_target].copy()
+    df = df_hour[df_hour["kWh"] >= wh_target / 1000].copy()
+    if len(df) == 0:
+        s = f"No hours reached target of {wh_target} Wh."
+        raise Exception(s)  # noqa: TRY002
 
     df["date"] = pd.to_datetime(df.index.date)  # type: ignore
     df = df.groupby(["date"]).agg(count=("kWh", "count"))
     date_last = str(df.index[-1].date())
 
     if date_last != date_last_source:
-        df.loc[pd.to_datetime(date_last_source)] = 0
+        df.loc[pd.to_datetime(date_last_source)] = 0  # type: ignore
 
     df = df.reindex(
         pd.date_range(df.index.min(), df.index.max(), freq="D"), fill_value=0
@@ -197,11 +201,11 @@ def prepare_df_last_14_days(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def plot_kWh(  # noqa: N802
+def plot_kwh_vs_date(
     df: pd.DataFrame,
     grouper: str,
-    kWh_sum: int = 0,  # noqa: N803
-    kWh_max: float = 0,  # noqa: N803
+    kwh_sum: int = 0,
+    kwh_max: float = 0,
 ) -> None:
     """
     Plot kWh per grouper (hour, day, week, month) over all time.
@@ -217,18 +221,18 @@ def plot_kWh(  # noqa: N802
         # ax.step(df["kWh"]["sum"], df["kWh"].index)
         df["kWh_sum"].plot(legend=False, drawstyle="steps-post")
 
-    if kWh_sum > 0:
+    if kwh_sum > 0:
         ax.text(
             0.99,
             0.99,
-            f"total: {kWh_sum} kWh",
+            f"total: {kwh_sum} kWh",
             horizontalalignment="right",
             verticalalignment="top",
             transform=ax.transAxes,
         )
 
-    if kWh_max > 0:
-        ax.set_ylim(0, kWh_max)
+    if kwh_max > 0:
+        ax.set_ylim(0, kwh_max)
     else:
         ax.set_ylim(
             0,
@@ -239,11 +243,11 @@ def plot_kWh(  # noqa: N802
     plt.close()
 
 
-def plot_kWh_date_mean(  # noqa: N802
+def plot_kwh_date_mean(
     df_day: pd.DataFrame,
     df_week: pd.DataFrame,
     df_month: pd.DataFrame,
-    kWh_sum: int = 0,  # noqa: N803
+    kwh_sum: int = 0,
 ) -> None:
     """Plot kWh per day, week and month (averaged) over all time."""
     file_name = "kWh-date-joined"
@@ -255,11 +259,11 @@ def plot_kWh_date_mean(  # noqa: N802
     plt.legend(["Day", "Week", "Month"])
     plt.suptitle("kWh per Day, averaged per Week and Month")
 
-    if kWh_sum > 0:
+    if kwh_sum > 0:
         plt.gcf().text(
             0.96,
             0.935,
-            f"total: {kWh_sum} kWh",
+            f"total: {kwh_sum} kWh",
             horizontalalignment="right",
             verticalalignment="top",
             # transform=ax.transAxes,
@@ -304,14 +308,14 @@ def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
 
         df = df_hour2[df_hour2["days_past"] == i][["kWh", "hour"]]
         df = df.set_index("hour")
-        kWh_sum = df["kWh"].sum()  # noqa: N806
+        kwh_sum = df["kWh"].sum()
 
         df.plot.bar(legend=False, ax=ax[i], width=1.0)
 
         plt.text(
             0.99,
             0.94,
-            f'{date_to_plot.strftime("%d.%m.")} {kWh_sum:.1f}kWh',
+            f'{date_to_plot.strftime("%d.%m.")} {kwh_sum:.1f}kWh',
             horizontalalignment="right",
             verticalalignment="top",
             transform=ax[i].transAxes,
@@ -337,11 +341,11 @@ def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
     plt.close()
 
 
-def plot_hours_goal_reached(df: pd.DataFrame, Wh_target: int) -> None:  # noqa: N803
+def plot_hours_goal_reached(df: pd.DataFrame, wh_target: int) -> None:
     """
     Plot how many hours per day did I get more than 100Wh.
     """
-    file_name = f"hours-of-{Wh_target}Wh"
+    file_name = f"hours-of-{wh_target}Wh"
     print("plot", file_name)
 
     fig, ax = plt.subplots()
@@ -363,29 +367,18 @@ def plot_hours_goal_reached(df: pd.DataFrame, Wh_target: int) -> None:  # noqa: 
 if __name__ == "__main__":
     df_hour = prepare_df_hours(read_database())
     MAX_KWH_PER_HOUR = df_hour["kWh"].max()
-    plot_kWh(df_hour, "hour", kWh_max=MAX_KWH_PER_HOUR)
+    plot_kwh_vs_date(df_hour, "hour", kwh_max=MAX_KWH_PER_HOUR)
 
     # how many hours per day did I reach a certain kWh target
-    df_hours_of_50W = prepare_df_hours_goal_reached(  # noqa: N816
-        df_hour, kWh_target=50 / 1000
-    )
-    plot_hours_goal_reached(df_hours_of_50W, Wh_target=50)
-
-    df_hours_of_100W = prepare_df_hours_goal_reached(  # noqa: N816
-        df_hour, kWh_target=100 / 1000
-    )
-    plot_hours_goal_reached(df_hours_of_100W, Wh_target=100)
-
-    df_hours_of_200W = prepare_df_hours_goal_reached(  # noqa: N816
-        df_hour, kWh_target=200 / 1000
-    )
-    plot_hours_goal_reached(df_hours_of_200W, Wh_target=200)
+    for wh_target in (50, 100, 200):
+        df = prepare_df_hours_goal_reached(df_hour, wh_target=wh_target)
+        plot_hours_goal_reached(df, wh_target=wh_target)
 
     df_hour_14d = prepare_df_last_14_days(df_hour)
     plot_last_14_days(df_hour_14d)
 
     df_day = prepare_df_day(df_hour)
-    kWh_sum = int(round(df_day["kWh"].sum(), 0))  # noqa: N816
+    kwh_sum = int(round(df_day["kWh"].sum(), 0))
     MAX_KWH_PER_DAY = ceil(df_day["kWh"].max())
 
     df_week = prepare_df_week(df_day)
@@ -397,11 +390,11 @@ if __name__ == "__main__":
         last_values = df.iloc[-1]
         df.loc[today] = last_values  # type: ignore
 
-    plot_kWh(df_day, "day", kWh_sum=kWh_sum, kWh_max=MAX_KWH_PER_DAY)
-    plot_kWh(df_week, "week", kWh_sum=kWh_sum)
-    plot_kWh(df_month, "month", kWh_sum=kWh_sum)
+    plot_kwh_vs_date(df_day, "day", kwh_sum=kwh_sum, kwh_max=MAX_KWH_PER_DAY)
+    plot_kwh_vs_date(df_week, "week", kwh_sum=kwh_sum)
+    plot_kwh_vs_date(df_month, "month", kwh_sum=kwh_sum)
 
-    plot_kWh_date_mean(df_day, df_week, df_month, kWh_sum=kWh_sum)
+    plot_kwh_date_mean(df_day, df_week, df_month, kwh_sum=kwh_sum)
 
     Path("out").mkdir(exist_ok=True)
     df_day["kWh"].round(3).to_csv("out/day.csv")
