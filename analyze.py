@@ -94,6 +94,7 @@ def prepare_df_hours_goal_reached(
     )
     df.index.name = "date"
     df["roll"] = df["count"].rolling(window=7, min_periods=1).mean().round(1)
+
     # print(df)
     return df
 
@@ -185,18 +186,18 @@ def prepare_df_last_14_days(df: pd.DataFrame) -> pd.DataFrame:
     """
     # do not modify original
     df = df.copy()
-    # dropping timezone to make it easier
+    # drop timezone to make it easier
     df.index = df.index.tz_localize(None)  # type: ignore
 
-    # df.index = df.index.tz_localize(None)
+    # select last 14 days
     df = df[df.index > (df.index[-1] - pd.DateOffset(days=14)).normalize()]
     # TODO: starts at 01:00:00+01:00 instead of 0:00
     df["date"] = pd.to_datetime(df.index.date)  # type: ignore
-    # today = pd.Timestamp.now().normalize()
     last_day = df["date"].iloc[-1]
     df["days_past"] = (last_day - pd.to_datetime(df["date"])).dt.days  # type: ignore
     df["time"] = df.index.time  # type: ignore
     df["hour"] = df.index.hour  # type: ignore
+
     # print(df)
     return df
 
@@ -296,7 +297,7 @@ def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
     """
     Plot kWh per hour of the last 14 days using subplots.
     """
-    days = 14
+    days = max(df_hour2["days_past"])
     file_name = f"kWh-hours-last-{days}-days"
     print("plot", file_name)
     fig, ax = plt.subplots(nrows=days, sharex=True, sharey=True, figsize=(4.8, 6.4))
@@ -365,38 +366,51 @@ def plot_hours_goal_reached(df: pd.DataFrame, wh_target: int) -> None:
 
 
 if __name__ == "__main__":
+    # 1. data preparation
     df_hour = prepare_df_hours(read_database())
-    MAX_KWH_PER_HOUR = df_hour["kWh"].max()
-    plot_kwh_vs_date(df_hour, "hour", kwh_max=MAX_KWH_PER_HOUR)
-
-    # how many hours per day did I reach a certain kWh target
-    for wh_target in (50, 100, 200):
-        df = prepare_df_hours_goal_reached(df_hour, wh_target=wh_target)
-        plot_hours_goal_reached(df, wh_target=wh_target)
-
-    df_hour_14d = prepare_df_last_14_days(df_hour)
-    plot_last_14_days(df_hour_14d)
-
     df_day = prepare_df_day(df_hour)
-    kwh_sum = int(round(df_day["kWh"].sum(), 0))
-    MAX_KWH_PER_DAY = ceil(df_day["kWh"].max())
-
     df_week = prepare_df_week(df_day)
     df_month = prepare_df_month(df_day)
 
-    # add last values
-    today = pd.Timestamp.now().normalize()
-    for df in (df_day, df_week, df_month):
-        last_values = df.iloc[-1]
-        df.loc[today] = last_values  # type: ignore
+    # 1.1 calculations
+    KWH_SUM = int(round(df_month["kWh_sum"].sum(), 0))
+    MAX_KWH_PER_HOUR = df_hour["kWh"].max()
+    MAX_KWH_PER_DAY = df_day["kWh"].max()
+    print(f"kWh sum: {KWH_SUM}")
+    print(f"kWh max day: {MAX_KWH_PER_DAY :.1f}")
 
-    plot_kwh_vs_date(df_day, "day", kwh_sum=kwh_sum, kwh_max=MAX_KWH_PER_DAY)
-    plot_kwh_vs_date(df_week, "week", kwh_sum=kwh_sum)
-    plot_kwh_vs_date(df_month, "month", kwh_sum=kwh_sum)
+    # 2. other reports
+    # 2.1 hours of last 14 days
+    df_hour_14d = prepare_df_last_14_days(df_hour)
 
-    plot_kwh_date_mean(df_day, df_week, df_month, kwh_sum=kwh_sum)
+    # 2.2 how much solar power is consumed, how much is donated to the grid
+    CONSUMPTION_WATT_PER_HOUR = 150
+    df = df_hour.copy()
+    df["kWh_used"] = df["kWh"].clip(upper=CONSUMPTION_WATT_PER_HOUR / 1000)
+    df["kWh_donated"] = df["kWh"] - df["kWh_used"]
+    print(f"kWh used: {df['kWh_used'].sum():.1f} kWh")
+    print(f"kWh donated: {df['kWh_donated'].sum():.1f} kWh")
 
+    # 3. export and plotting
+    # 3.1 export
     Path("out").mkdir(exist_ok=True)
     df_day["kWh"].round(3).to_csv("out/day.csv")
     df_week[["kWh_sum", "kWh_mean"]].round(3).to_csv("out/week.csv")
     df_month[["kWh_sum", "kWh_mean"]].round(3).to_csv("out/month.csv")
+
+    # 3.2 plotting
+    # add last values for plotting
+    today = pd.Timestamp.now().normalize()
+    for df in (df_week, df_month):
+        last_values = df.iloc[-1]
+        df.loc[today] = last_values  # type: ignore
+    plot_kwh_vs_date(df_day, "day", kwh_sum=KWH_SUM, kwh_max=ceil(MAX_KWH_PER_DAY))
+    plot_kwh_vs_date(df_week, "week", kwh_sum=KWH_SUM)
+    plot_kwh_vs_date(df_month, "month", kwh_sum=KWH_SUM)
+    plot_kwh_date_mean(df_day, df_week, df_month, kwh_sum=KWH_SUM)
+    plot_last_14_days(df_hour_14d)
+
+    # 4. how many hours per day did I reach a certain kWh target
+    for wh_target in (50, 100, 200):
+        df = prepare_df_hours_goal_reached(df_hour, wh_target=wh_target)
+        plot_hours_goal_reached(df, wh_target=wh_target)
