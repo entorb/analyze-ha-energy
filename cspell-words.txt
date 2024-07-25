@@ -3,6 +3,7 @@ astype
 drawstyle
 figsize
 fortlaufender
+homeassistant
 horizontalalignment
 hspace
 iloc
