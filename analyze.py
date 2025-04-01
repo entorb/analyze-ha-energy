@@ -80,7 +80,7 @@ def prepare_df_hours_goal_reached(
     df = df_hour[df_hour["kWh"] >= wh_target / 1000].copy()
     if len(df) == 0:
         s = f"No hours reached target of {wh_target} Wh."
-        raise Exception(s)  # noqa: TRY002
+        raise ValueError(s)
 
     df["date"] = pd.to_datetime(df.index.date)  # type: ignore
     df = df.groupby(["date"]).agg(count=("kWh", "count"))
@@ -214,7 +214,7 @@ def plot_kwh_vs_date(
     file_name = f"kWh-date-{grouper}"
     print("plot", file_name)
     plt.suptitle(f"kWh per {grouper}")
-    fig, ax = plt.subplots()
+    _fig, ax = plt.subplots()
     if grouper in ("hour", "day"):
         df["kWh"].plot(legend=False, drawstyle="steps-post")
     else:
@@ -253,7 +253,7 @@ def plot_kwh_date_mean(
     """Plot kWh per day, week and month (averaged) over all time."""
     file_name = "kWh-date-joined"
     print("plot", file_name)
-    fig, ax = plt.subplots()
+    _fig, ax = plt.subplots()
     df_day["kWh"].plot(legend=True, drawstyle="steps-post")
     df_week["kWh_mean"].plot(drawstyle="steps-post", linewidth=2.0)
     df_month["kWh_mean"].plot(drawstyle="steps-post", linewidth=3.0)
@@ -316,7 +316,7 @@ def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
         plt.text(
             0.99,
             0.94,
-            f'{date_to_plot.strftime("%d.%m.")} {kwh_sum:.1f}kWh',
+            f"{date_to_plot.strftime('%d.%m.')} {kwh_sum:.1f}kWh",
             horizontalalignment="right",
             verticalalignment="top",
             transform=ax[i].transAxes,
@@ -330,12 +330,17 @@ def plot_last_14_days(df_hour2: pd.DataFrame) -> None:
     plt.xticks(rotation=0)
 
     fig.supxlabel("Hour of the Day")
-    fig.supylabel(f"kWh per Hour (max {round(MAX_KWH_PER_HOUR,1)}kWh)")
+    fig.supylabel(f"kWh per Hour (max {round(MAX_KWH_PER_HOUR, 1)}kWh)")
     # plt.xlabel("kWh per Hour")
     # plt.ylabel("kWh per Hour")
     # plt.tight_layout()
     plt.subplots_adjust(
-        left=None, bottom=None, right=None, top=None, wspace=None, hspace=None
+        left=None,
+        bottom=None,
+        right=None,
+        top=None,
+        wspace=None,
+        hspace=None,  # type: ignore
     )
 
     plt.savefig(fname=f"{file_name}.png", format="png")
@@ -349,7 +354,7 @@ def plot_hours_goal_reached(df: pd.DataFrame, wh_target: int) -> None:
     file_name = f"hours-of-{wh_target}Wh"
     print("plot", file_name)
 
-    fig, ax = plt.subplots()
+    _fig, ax = plt.subplots()
     df.plot(
         legend=False,
         ax=ax,
@@ -377,7 +382,7 @@ if __name__ == "__main__":
     MAX_KWH_PER_HOUR = df_hour["kWh"].max()
     MAX_KWH_PER_DAY = df_day["kWh"].max()
     print(f"kWh sum: {KWH_SUM}")
-    print(f"kWh max day: {MAX_KWH_PER_DAY :.1f}")
+    print(f"kWh max day: {MAX_KWH_PER_DAY:.1f}")
 
     # 2. other reports
     # 2.1 hours of last 14 days
