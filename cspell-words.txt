@@ -16,6 +16,8 @@ nrows
 raspi
 sharex
 sharey
+SonarCloud
+SonarQube
 suptitle
 supxlabel
 supylabel

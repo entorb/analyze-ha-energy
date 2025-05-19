@@ -14,3 +14,7 @@ Python Pandas script to analyze the Solar Power Production data stored in a Home
 - joined chart of kWh per day, averaged per week and month, see example below
 
 ![example image](example.png)
+
+## SonarQube Code Analysis
+
+At [sonarcloud.io](https://sonarcloud.io/summary/overall?id=entorb_analyze-ha-energy&branch=main)
